@@ -6,14 +6,19 @@
 #[cfg(feature = "std")]
 include!(concat!(env!("OUT_DIR"), "/wasm_binary.rs"));
 
+
+use codec::{Encode, Decode};
+#[cfg(feature = "std")]
+use serde::{Deserialize, Serialize};
+
 use sp_std::prelude::*;
 use sp_core::{crypto::KeyTypeId, OpaqueMetadata};
 use sp_runtime::{
-	ApplyExtrinsicResult, generic, create_runtime_str, impl_opaque_keys, MultiSignature,
+	ApplyExtrinsicResult, generic, create_runtime_str, impl_opaque_keys, MultiSignature, RuntimeDebug,
 	transaction_validity::{TransactionValidity, TransactionSource},
 };
 use sp_runtime::traits::{
-	BlakeTwo256, Block as BlockT, AccountIdLookup, Verify, IdentifyAccount, NumberFor,
+	BlakeTwo256, Block as BlockT, AccountIdLookup, Verify, IdentifyAccount, NumberFor, Zero,
 };
 use sp_api::impl_runtime_apis;
 use sp_consensus_aura::sr25519::AuthorityId as AuraId;
@@ -22,6 +27,8 @@ use pallet_grandpa::fg_primitives;
 use sp_version::RuntimeVersion;
 #[cfg(feature = "std")]
 use sp_version::NativeVersion;
+use orml_currencies::BasicCurrencyAdapter;
+use orml_traits::{parameter_type_with_key};
 
 // A few exports that help ease life for downstream crates.
 #[cfg(any(feature = "std", test))]
@@ -263,6 +270,50 @@ impl template::Config for Runtime {
 	type Event = Event;
 }
 
+pub type Amount = i128;
+
+#[derive(Encode, Decode, Eq, PartialEq, Copy, Clone, RuntimeDebug, Ord, PartialOrd)]
+#[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
+pub enum CurrencyId {
+    Native,
+    DOT,
+    KSM,
+    BTC,
+    SGC,
+}
+
+parameter_type_with_key! {
+	pub ExistentialDeposits: |currency_id: CurrencyId| -> Balance {
+		Zero::zero()
+	};
+}
+
+impl orml_tokens::Config for Runtime {
+    type Event = Event;
+    type Balance = Balance;
+    type Amount = Amount;
+    type CurrencyId = CurrencyId;
+    type WeightInfo = ();
+    type ExistentialDeposits = ExistentialDeposits;
+    type OnDust = ();
+}
+
+parameter_types! {
+    pub const GetNativeCurrencyId: CurrencyId = CurrencyId::Native;
+}
+
+impl orml_currencies::Config for Runtime {
+    type Event = Event;
+    type MultiCurrency = Tokens;
+    // type NativeCurrency = BasicCurrencyAdapter<Runtime, Balance, Amount, BlockNumber> ;
+	type NativeCurrency = BasicCurrencyAdapter<Runtime, Balances, Amount, BlockNumber>;
+    type GetNativeCurrencyId = GetNativeCurrencyId;
+
+    type WeightInfo = ();
+}
+
+
+
 // Create the runtime by composing the FRAME pallets that were previously configured.
 construct_runtime!(
 	pub enum Runtime where
@@ -278,6 +329,9 @@ construct_runtime!(
 		Balances: pallet_balances::{Module, Call, Storage, Config<T>, Event<T>},
 		TransactionPayment: pallet_transaction_payment::{Module, Storage},
 		Sudo: pallet_sudo::{Module, Call, Config<T>, Storage, Event<T>},
+		Tokens: orml_tokens::{Module, Storage, Event<T>, Config<T>},
+        Currencies: orml_currencies::{Module, Call, Event<T>},
+		//
 		// Include the custom logic from the template pallet in the runtime.
 		TemplateModule: template::{Module, Call, Storage, Event<T>},
 	}
