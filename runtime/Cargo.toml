@@ -45,7 +45,9 @@ frame-benchmarking = { version = "3.0.0", default-features = false, optional = t
 frame-system-benchmarking = { version = "3.0.0", default-features = false,  optional = true }
 hex-literal = { version = "0.3.1", optional = true }
 
+# local pallet
 template = { version = "2.0.0", default-features = false, path = "../pallets/template", package = "pallet-template" }
+exchange = { version = "2.0.0", default-features = false, path = "../pallets/exchange", package = "pallet-exchange" }
 
 
 # add token and currencies
@@ -84,10 +86,13 @@ std = [
 	"sp-version/std",
 	"frame-system/std",
 	"frame-system-rpc-runtime-api/std",
-	"template/std",
 	"orml-tokens/std",
 	"orml-currencies/std",
 	"orml-traits/std",
+
+	# loal pallet
+	"template/std",
+#	"exchange/std",
 ]
 runtime-benchmarks = [
 	"sp-runtime/runtime-benchmarks",
