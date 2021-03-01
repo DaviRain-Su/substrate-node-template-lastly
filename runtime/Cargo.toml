@@ -46,6 +46,8 @@ frame-system-benchmarking = { version = "3.0.0", default-features = false,  opti
 hex-literal = { version = "0.3.1", optional = true }
 
 template = { version = "2.0.0", default-features = false, path = "../pallets/template", package = "pallet-template" }
+erc20 = { version = "2.0.0", default-features = false, path = "../pallets/erc20", package = "pallet-erc20" }
+chain-extension = { version = "2.0.0", default-features = false, path = "../pallets/chain-extension", package = "pallet-chain-extension" }
 
 [build-dependencies]
 substrate-wasm-builder = { version = "4.0.0" }
@@ -79,6 +81,8 @@ std = [
 	"frame-system/std",
 	"frame-system-rpc-runtime-api/std",
 	"template/std",
+	"erc20/std",
+	"chain-extension/std",
 ]
 runtime-benchmarks = [
 	"sp-runtime/runtime-benchmarks",
