@@ -265,6 +265,7 @@ impl template::Config for Runtime {
 
 impl erc20::Config for Runtime {
 	type Event = Event;
+	type Balance = Balance;
 }
 
 impl chain_extension::Config for Runtime {

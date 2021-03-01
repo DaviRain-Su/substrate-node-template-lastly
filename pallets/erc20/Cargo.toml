@@ -18,6 +18,7 @@ frame-support = { default-features = false, version = '3.0.0' }
 frame-system = { default-features = false, version = '3.0.0' }
 frame-benchmarking = {default-features = false, version = "3.0.0", optional = true}
 sp-std = {default-features = false, version = "3.0.0" }
+sp-runtime = {default-features = false, version = "3.0.0"}
 
 funty = { version = "=1.1.0", default-features = false } 
 [dev-dependencies]

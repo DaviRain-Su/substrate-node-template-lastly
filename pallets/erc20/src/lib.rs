@@ -6,6 +6,9 @@
 
 pub use pallet::*;
 
+use frame_support::dispatch;
+
+
 #[cfg(test)]
 mod mock;
 
@@ -16,11 +19,14 @@ mod tests;
 pub mod pallet {
 	use frame_support::{dispatch::DispatchResultWithPostInfo, pallet_prelude::*};
 	use frame_system::pallet_prelude::*;
+	use sp_runtime::traits::AtLeast32BitUnsigned;
+	use sp_std::fmt::Debug;
+	use codec::Codec;
 
-	/// Configure the pallet by specifying the parameters and types on which it depends.
 	#[pallet::config]
 	pub trait Config: frame_system::Config {
-		/// Because this pallet emits events, it depends on the runtime's definition of an event.
+		type Balance: Parameter + Member + AtLeast32BitUnsigned + Codec + Default + Copy +
+		MaybeSerializeDeserialize + Debug;
 		type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
 	}
 
@@ -28,77 +34,100 @@ pub mod pallet {
 	#[pallet::generate_store(pub(super) trait Store)]
 	pub struct Pallet<T>(_);
 
-	// The pallet's runtime storage items.
-	// https://substrate.dev/docs/en/knowledgebase/runtime/storage
+	// 定义总供给量
 	#[pallet::storage]
-	#[pallet::getter(fn something)]
-	// Learn more about declaring storage items:
-	// https://substrate.dev/docs/en/knowledgebase/runtime/storage#declaring-storage-items
-	pub type Something<T> = StorageValue<_, u32>;
+	#[pallet::getter(fn total_supply_of)]
+	pub type TotalSupply<T: Config> = StorageValue<_, T::Balance>;
 
-	// Pallets use events to inform users when important changes are made.
-	// https://substrate.dev/docs/en/knowledgebase/runtime/events
+	// 定义一个账户对应的余额
+	#[pallet::storage]
+	#[pallet::getter(fn balances_of)]
+	pub type Balances<T: Config> = StorageMap<_, Blake2_128Concat, T::AccountId, T::Balance, ValueQuery >;
+
+	// 定义A账户可以向B账户转账的金额
+	#[pallet::storage]
+	#[pallet::getter(fn allowance_of)]
+	pub type Allowance<T: Config> = StorageMap<_, Blake2_128Concat, (T::AccountId, T::AccountId), T::Balance>;
+
 	#[pallet::event]
 	#[pallet::metadata(T::AccountId = "AccountId")]
 	#[pallet::generate_deposit(pub(super) fn deposit_event)]
 	pub enum Event<T: Config> {
-		/// Event documentation should end with an array that provides descriptive names for event
-		/// parameters. [something, who]
-		SomethingStored(u32, T::AccountId),
+		Transfer(T::AccountId, T::AccountId, T::Balance),
+		Approve(T::AccountId, T::AccountId, T::Balance),
 	}
-	
-	// Errors inform users that something went wrong.
+
 	#[pallet::error]
 	pub enum Error<T> {
-		/// Error names should be descriptive.
-		NoneValue,
-		/// Errors should have helpful documentation associated with them.
-		StorageOverflow,
+		/// in sufficient balance
+		InSufficientBalance,
+		/// in sufficient allowance
+		InSufficientAllowance,
 	}
 
 	#[pallet::hooks]
 	impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {}
 
-	// Dispatchable functions allows users to interact with the pallet and invoke state changes.
-	// These functions materialize as "extrinsics", which are often compared to transactions.
-	// Dispatchable functions must be annotated with a weight and must return a DispatchResult.
 	#[pallet::call]
 	impl<T:Config> Pallet<T> {
-		/// An example dispatchable that takes a singles value as a parameter, writes the value to
-		/// storage and emits an event. This function must be dispatched by a signed extrinsic.
-		#[pallet::weight(10_000 + T::DbWeight::get().writes(1))]
-		pub fn do_something(origin: OriginFor<T>, something: u32) -> DispatchResultWithPostInfo {
-			// Check that the extrinsic was signed and get the signer.
-			// This function will return an error if the extrinsic is not signed.
-			// https://substrate.dev/docs/en/knowledgebase/runtime/origin
+		#[pallet::weight(10_1000 + T::DbWeight::get().writes(1))]
+		pub fn transfer(origin: OriginFor<T>, to: T::AccountId, value: T::Balance) -> DispatchResultWithPostInfo {
 			let who = ensure_signed(origin)?;
 
-			// Update storage.
-			<Something<T>>::put(something);
+			Self::transfer_help(who, to, value)?;
 
-			// Emit an event.
-			Self::deposit_event(Event::SomethingStored(something, who));
-			// Return a successful DispatchResultWithPostInfo
 			Ok(().into())
 		}
 
-		/// An example dispatchable that may throw a custom error.
-		#[pallet::weight(10_000 + T::DbWeight::get().reads_writes(1,1))]
-		pub fn cause_error(origin: OriginFor<T>) -> DispatchResultWithPostInfo {
-			let _who = ensure_signed(origin)?;
+		#[pallet::weight(10_1000 + T::DbWeight::get().writes(1))]
+		pub fn transfer_from(origin: OriginFor<T>, from: T::AccountId, to: T::AccountId, value: T::Balance) -> DispatchResultWithPostInfo {
+			let _ = ensure_signed(origin)?;
 
-			// Read a value from storage.
-			match <Something<T>>::get() {
-				// Return an error if the value has not been set.
-				None => Err(Error::<T>::NoneValue)?,
-				Some(old) => {
-					// Increment the value read from storage; will error in the event of overflow.
-					let new = old.checked_add(1).ok_or(Error::<T>::StorageOverflow)?;
-					// Update the value in storage with the incremented result.
-					<Something<T>>::put(new);
-					Ok(().into())
-				},
+			let from_balance = Balances::<T>::get(&from);
+
+			if from_balance < value {
+				return Err(Error::<T>::InSufficientAllowance)?;
 			}
+
+			Allowance::<T>::insert((from.clone(), to.clone()), from_balance - value);
+
+			Self::transfer_help(from, to, value)?;
+
+			Ok(().into())
 		}
+
+		#[pallet::weight(10_1000 + T::DbWeight::get().writes(1))]
+		pub fn allowance(origin: OriginFor<T>, spender: T::AccountId, value: T::Balance) -> DispatchResultWithPostInfo {
+			let who = ensure_signed(origin)?;
+
+			let who_balance = Balances::<T>::get(&who);
+			if who_balance < value {
+				return Err(Error::<T>::InSufficientBalance)?;
+			}
+
+			Allowance::<T>::insert((who.clone(), spender.clone()), value);
+
+			Self::deposit_event(Event::Approve(who, spender, value));
+
+			Ok(().into())
+		}
+	}
+}
+
+impl<T: Config> Pallet<T> {
+	pub fn transfer_help(from: T::AccountId, to : T::AccountId, value: T::Balance) -> dispatch::DispatchResult {
+		let from_balance = Balances::<T>::get(&from);
+		if from_balance < value {
+			return Err(Error::<T>::InSufficientBalance)?;
+		}
+
+		Balances::<T>::insert(from.clone(), from_balance - value);
+
+		let to_balance = Balances::<T>::get(&to);
+
+		Balances::<T>::insert(to.clone(), to_balance + value);
+
+		Self::deposit_event(Event::Transfer(from, to, value));
+		Ok(())
 	}
 }
